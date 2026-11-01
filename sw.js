@@ -2,7 +2,7 @@
    - Seite: erst Netz (damit Updates sofort kommen), sonst letzte gespeicherte Version
    - Schriften, Icons, Supabase-Bibliothek: aus dem Cache, im Hintergrund aktualisiert
    - Supabase-Daten und Login werden NIE gecacht (immer live) */
-const CACHE = 'lernboard-v1';
+const CACHE = 'lernboard-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f1ebdf">
+<meta name="theme-color" id="tc" content="#f1ebdf">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Lernboard">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Lernboard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a2723'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='%23f1ebdf' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
@@ -47,6 +47,13 @@ window.LERNBOARD_CONFIG = {
   --shadow:0 8px 20px -12px rgba(0,0,0,.7);
   --over:#e58f78; --overbg:#43271f; --today:#e4bb5e; --todaybg:#413519; --soon:#92b4d6; --soonbg:#212f3c;
 }
+[data-theme=rose]{
+  --bg:#eeb0bf; --dots:#e39cb1; --surface:#fbe2e8; --surface2:#f6c9d4; --ink:#5c1527; --ink2:#85404f; --line:#df8fa5;
+  --shadow:0 1px 0 rgba(92,21,39,.04),0 8px 20px -12px rgba(92,21,39,.38);
+  --over:#9b1c31; --overbg:#f9d2d6; --today:#7a4f0a; --todaybg:#f6e2b4; --soon:#2f4f78; --soonbg:#d9e4f1;
+}
+:root{color-scheme:light}
+[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;display:flex;flex-direction:column;background:var(--bg);background-image:radial-gradient(var(--dots) 1px,transparent 1px);background-size:22px 22px;color:var(--ink);font:15px/1.45 var(--sans);-webkit-text-size-adjust:100%}
@@ -275,7 +282,7 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
   <div class="spacer"></div>
   <div class="tools">
     <input id="q" type="search" placeholder="Suchen   ( / )" autocomplete="off">
-    <button class="ib" id="theme" title="Hell/Dunkel" aria-label="Hell/Dunkel wechseln">☾</button>
+    <button class="ib" id="theme" title="Design wechseln: Hell, Dunkel, Rosa" aria-label="Design wechseln">☾</button>
     <button class="ib" id="bk" data-act="bkmenu"><span class="dot"></span><span id="bklabel">Backup</span></button>
     <div class="menu" id="bkmenu" hidden>
       <button data-act="export">Backup herunterladen</button>
@@ -333,6 +340,9 @@ const WDL=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Sams
 const CHEERS=['Erledigt.','Ein Ding weniger im Kopf.','Sauber.','Geschafft - weiter so.','Stark.'];
 const CAN_DRAG=!!(window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches);
 const $=s=>document.querySelector(s);
+const THEMES=['light','dark','rose'];
+const TLABEL={light:'☀ Hell',dark:'☾ Dunkel',rose:'♡ Rosa'};
+const TCOLOR={light:'#f1ebdf',dark:'#1a1917',rose:'#eeb0bf'};
 
 /* ---------- State ---------- */
 const blank=()=>({subjects:[],tasks:[]});
@@ -574,9 +584,11 @@ function updateHeader(){
   else{const n=-diffDays(fmtDate(new Date(DEV.lastBackup)));label='Backup: '+(n===0?'heute':n===1?'gestern':'vor '+n+' Tagen');warn=n>14&&MODE!=='remote';}
   if(MODE==='remote') warn=false;
   $('#bklabel').textContent=label; bk.classList.toggle('warn',warn);
-  const th=DEV.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  let th=DEV.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  if(THEMES.indexOf(th)<0) th='light';
   document.documentElement.dataset.theme=th;
-  $('#theme').textContent=th==='dark'?'☀':'☾';
+  $('#theme').textContent=TLABEL[th];
+  $('#tc').setAttribute('content',TCOLOR[th]);
   $('#whoname').textContent=whoName;
   $('#logoutbtn').hidden=MODE!=='remote';
   updateSync();
@@ -854,7 +866,7 @@ function setTab(t){ui.tab=t; DEV.tab=t; saveDev(); render();}
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]'); if(b)setTab(b.dataset.tab);});
 $('#q').addEventListener('input',e=>{ui.q=e.target.value; render();});
 $('#q').addEventListener('keydown',e=>{if(e.key==='Escape'){e.target.value='';ui.q='';e.target.blur();render();}});
-$('#theme').addEventListener('click',()=>{DEV.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'; saveDev(); updateHeader();});
+$('#theme').addEventListener('click',()=>{const cur=document.documentElement.dataset.theme; DEV.theme=THEMES[(THEMES.indexOf(cur)+1)%THEMES.length]; saveDev(); updateHeader();});
 
 /* ---------- Drag & Drop (nur Maus-Geräte) ---------- */
 let dragId=null, ph=null;
