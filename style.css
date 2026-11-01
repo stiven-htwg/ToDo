@@ -1,0 +1,46 @@
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  background-color: #fffaf4;
+  color: #3b2f2a;
+}
+
+h2 {
+  color: #8b5e3c;
+}
+
+.cafe-name {
+  font-weight: bold;
+  color: #6f4e37;
+}
+
+.slogan {
+  font-style: italic;
+  font-size: 1.15rem;
+}
+
+a {
+  color: #8b5e3c;
+}
+
+nav a {
+  margin-right: 1.25rem;
+}
+
+a:hover {
+  color: #3b2f2a;
+  text-decoration: underline;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+td,
+th {
+  padding: 0.4rem 1rem 0.4rem 0;
+  text-align: left;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f3e9dc;
+}
