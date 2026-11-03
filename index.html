@@ -225,19 +225,14 @@ dialog input:focus,dialog select:focus,dialog textarea:focus{border-color:var(--
 .prio input:focus-visible+span{outline:2px solid var(--soon)}
 .dact{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 
-/* Gemeinsame Kachel (Essensplan) */
-.shsub{font-size:12.5px;color:var(--ink2);padding:0 16px 8px;margin-top:-2px}
+/* Gemeinsame Pinnwand */
+.shsub{font-size:12.5px;color:var(--ink2);padding:0 16px 2px;margin-top:-2px}
 .linkb{color:var(--ink2);text-decoration:underline;text-underline-offset:3px;font-size:12.5px}
 .linkb:hover{color:var(--ink)}
-.meals{padding:2px 10px 8px;display:flex;flex-direction:column;gap:6px}
-.meal{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px 8px 5px 12px;min-height:46px}
-.mlabel{font:400 13px var(--serif);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);width:66px;flex:none}
-.mtext{flex:1;min-width:0;text-align:left;font-weight:500;overflow-wrap:anywhere;padding:6px 0}
-.mtext.empty{color:var(--ink2);font-weight:400;font-size:14px}
-.shedit{flex:1;min-width:0;border:0;border-bottom:1px solid var(--c);background:transparent;outline:none;padding:6px 0;font-weight:500}
+.shlist{padding:6px 10px 12px;min-height:64px;display:flex;flex-direction:column;gap:8px;border-radius:0 0 14px 14px}
+.shadd{display:block;width:100%;border:1px solid var(--c);background:var(--surface);border-radius:12px;padding:10px 12px;outline:none}
 .chip.newc{background:var(--todaybg);color:var(--today);border-color:transparent;font-weight:700;cursor:pointer}
-.stasks{padding:0 10px 6px;display:flex;flex-direction:column;gap:6px}
-.stask{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 6px 9px 12px;box-shadow:var(--shadow)}
+.stask{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 6px 10px 12px;box-shadow:var(--shadow)}
 .stask.sdone{box-shadow:none;background:transparent}
 .stask.sdone .check{background:var(--c);border-color:var(--c)}
 .stask.sdone .check svg{opacity:1}
@@ -245,11 +240,10 @@ dialog input:focus,dialog select:focus,dialog textarea:focus{border-color:var(--
 .sbody{flex:1;min-width:0}
 .stitle{display:block;text-align:left;font-weight:500;overflow-wrap:anywhere;width:100%;padding:0}
 .stask.sdone .stitle{text-decoration:line-through;color:var(--ink2)}
+.shedit{display:block;width:100%;border:0;border-bottom:1px solid var(--c);background:transparent;outline:none;padding:2px 0;font-weight:500}
 .sx{width:28px;height:28px;border-radius:8px;color:var(--ink2);font-size:16px;display:grid;place-items:center;flex:none}
 .sx:hover{background:var(--surface2);color:var(--ink)}
-.shmore{display:block;margin:2px 14px 8px;font-size:12.5px;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
-.shadd{display:block;width:calc(100% - 28px);margin:2px 14px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;padding:8px 0;outline:none}
-.shadd:focus{border-color:var(--c)}
+.shmore{display:block;margin:0 14px 10px;font-size:12.5px;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
 
 /* Toast */
 #toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,30px);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;display:flex;gap:14px;align-items:center;font-size:14px;transition:.25s;z-index:150;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);max-width:92vw}
@@ -382,7 +376,8 @@ const ui={tab:DEV.tab||'aktiv',q:'',expanded:new Set(),menu:null,addingSubject:f
 let undoSnap=null, toastTimer=null, lastDay=todayStr();
 const SHKEY='lernboard_shared_cache', SHPEND='lernboard_shared_pending', SHSEEN='lernboard_shared_seen';
 let SH={}, shPend={}, shLoaded=false, shBusy=false, shAgain=false, shPulling=false, shMissing=false, shSeen=0, shSeenFresh=false, shTimer=null, shRetry=null, shChan=null, shDel=null;
-ui.shEdit=null; ui.shFocusNew=false; ui.shDone=false;
+ui.shEdit=null; ui.shFocusNew=false; ui.shDone=false; ui.shAdding=false;
+let rendering=false;
 
 function loadLocal(){
   try{const r=localStorage.getItem(KEY); if(r){const d=JSON.parse(r); return {subjects:d.subjects||[],tasks:d.tasks||[]};}}catch(e){}
@@ -628,7 +623,9 @@ function render(){
   updateHeader();
   const b=$('#board');
   const ae=document.activeElement; const keep=(ae&&ae.matches&&ae.matches('[data-shnew]'))?{v:ae.value,s:ae.selectionStart}:null;
+  rendering=true;
   b.innerHTML=ui.tab==='aktiv'?viewAktiv():ui.tab==='faellig'?viewFaellig():viewErledigt();
+  rendering=false;
   if(keep){const i=b.querySelector('[data-shnew]'); if(i){i.value=keep.v; i.focus(); try{i.setSelectionRange(keep.s,keep.s);}catch(e){}}}
   else if(ui.shFocusNew){const i=b.querySelector('[data-shnew]'); if(i)i.focus();}
   ui.shFocusNew=false;
@@ -811,15 +808,10 @@ function shUndo(){
   shPut(shDel); shDel=null; hideToast(); render();
 }
 
-function mealRow(offset){
-  const ds=addDays(offset), id='meal-'+ds, it=SH[id], txt=it?(it.data.text||''):'';
-  const editing=ui.shEdit===id;
-  return '<div class="meal" data-shid="'+id+'"><span class="mlabel">'+(offset===0?'Heute':'Morgen')+'</span>'+
-    (editing
-      ? '<input class="shedit" data-shedit="meal" value="'+esc(txt)+'" maxlength="120" placeholder="Was gibt es?">'
-      : '<button class="mtext'+(txt?'':' empty')+'" data-act="sh-edit">'+(txt?esc(txt):'Noch nichts - tippen zum Eintragen')+'</button>')+
-    (it&&shNew(it)&&!editing?'<button class="chip newc" data-act="sh-seen" title="Als gesehen markieren">neu · '+esc(it.data.by)+'</button>':'')+
-  '</div>';
+function whenLabel(ts){
+  if(!ts) return '';
+  const d=new Date(ts), n=diffDays(fmtDate(d));
+  return n===0?d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):n===-1?'gestern':dm(fmtDate(d));
 }
 function shTaskHTML(it){
   const d=it.data, editing=ui.shEdit===it.id;
@@ -827,9 +819,9 @@ function shTaskHTML(it){
     '<button class="check" data-act="sh-toggle" aria-label="'+(d.done?'Wieder öffnen':'Erledigt')+'">'+CHECKSVG+'</button>'+
     '<div class="sbody">'+
       (editing
-        ? '<input class="shedit" data-shedit="task" value="'+esc(d.title||'')+'" maxlength="150">'
+        ? '<input class="shedit" data-shedit="task" value="'+esc(d.title||'')+'" maxlength="300">'
         : '<button class="stitle" data-act="sh-edit">'+esc(d.title||'')+'</button>')+
-      '<div class="meta"><span class="chip">'+esc(d.by||'?')+'</span>'+(shNew(it)?'<button class="chip newc" data-act="sh-seen">neu</button>':'')+'</div>'+
+      '<div class="meta"><span class="chip">'+esc(d.by||'?')+' · '+whenLabel(d.at)+'</span>'+(shNew(it)?'<button class="chip newc" data-act="sh-seen">neu</button>':'')+'</div>'+
     '</div>'+
     '<button class="sx" data-act="sh-del" aria-label="Löschen">×</button>'+
   '</div>';
@@ -839,22 +831,29 @@ function sharedTile(){
   const q=ui.q.trim().toLowerCase();
   const tasks=Object.values(SH).filter(x=>x.kind==='task');
   const open=tasks.filter(x=>!x.data.done&&(!q||(x.data.title||'').toLowerCase().includes(q)))
-    .sort((a,b)=>(a.data.created||a.data.at||0)-(b.data.created||b.data.at||0));
+    .sort((a,b)=>(b.data.created||b.data.at||0)-(a.data.created||a.data.at||0));
   const done=tasks.filter(x=>x.data.done).sort((a,b)=>(b.data.doneAt||0)-(a.data.doneAt||0));
   const o=otherName(), anyNew=Object.values(SH).some(shNew);
+  const pct=tasks.length?Math.round(done.length/tasks.length*100):0;
   let h='<section class="col shared" style="--c:#d1a24a">'+
-    '<header class="colhead"><div class="ctitle">Essensplan</div><span class="count">'+(open.length?open.length+' offen':'')+'</span></header>'+
+    '<header class="colhead"><div class="ctitle">Pinnwand</div>'+
+      '<span class="count">'+open.length+' offen</span>'+
+      '<button class="icon plus" data-act="sh-add" aria-label="Etwas anpinnen">+</button>'+
+    '</header>'+
     '<div class="shsub">Gemeinsam'+(o?' mit '+esc(o):'')+(anyNew?' · <button class="linkb" data-act="sh-seen">alles gesehen</button>':'')+'</div>'+
-    '<div class="meals">'+mealRow(0)+mealRow(1)+'</div>';
-  if(shMissing) h+='<div class="hint">Die gemeinsame Tabelle fehlt noch in Supabase. Bitte das SQL dafür ausführen.</div>';
-  h+='<div class="stasks">'+open.map(shTaskHTML).join('')+'</div>';
+    '<div class="prog" title="'+pct+'% erledigt"><i style="width:'+pct+'%"></i></div>'+
+    '<div class="shlist">'+
+      (ui.shAdding?'<input class="shadd" data-shnew placeholder="Nachricht oder To-do …" maxlength="300">':'')+
+      (shMissing?'<div class="hint">Die gemeinsame Tabelle fehlt noch in Supabase. Bitte das SQL dafür ausführen.</div>':'')+
+      (open.length?open.map(shTaskHTML).join(''):(ui.shAdding||shMissing?'':'<div class="hint">'+(q?'Nichts gefunden.':'Noch nichts angepinnt. Plus oben, um etwas'+(o?' für '+esc(o):'')+' zu hinterlassen.')+'</div>'))+
+    '</div>';
   if(done.length){
     h+='<button class="shmore" data-act="sh-more">'+(ui.shDone?'Erledigte ausblenden':done.length+' erledigt anzeigen')+'</button>';
-    if(ui.shDone) h+='<div class="stasks">'+done.slice(0,15).map(shTaskHTML).join('')+'</div>';
+    if(ui.shDone) h+='<div class="shlist" style="padding-top:0">'+done.slice(0,15).map(shTaskHTML).join('')+'</div>';
   }
-  h+='<input class="shadd" data-shnew placeholder="Gemeinsame Aufgabe hinzufügen …" maxlength="150">';
   return h+'</section>';
 }
+
 
 /* ---------- Dialog ---------- */
 const dlg=$('#dlg');
@@ -1052,6 +1051,7 @@ document.addEventListener('click',e=>{
     }
     case 'add-subject': ui.addingSubject=true; render(); break;
     case 'undo': undo(); break;
+    case 'sh-add': ui.shAdding=true; ui.shFocusNew=true; render(); break;
     case 'sh-edit': ui.shEdit=shid; render(); break;
     case 'sh-toggle': shToggle(shid); break;
     case 'sh-del': shDelete(shid); break;
@@ -1076,6 +1076,7 @@ document.addEventListener('keydown',e=>{
   }
   if(t.matches&&t.matches('[data-shnew]')){
     if(e.key==='Enter'){const v=t.value.trim(); if(v){t.value=''; shAddTask(v);}}
+    else if(e.key==='Escape'){ui.shAdding=false; render();}
     return;
   }
   if(t.matches&&t.matches('[data-shedit]')){
@@ -1106,6 +1107,12 @@ document.addEventListener('keydown',e=>{
 
 document.addEventListener('focusout',e=>{
   const t=e.target;
+  if(rendering) return;
+  if(t.matches&&t.matches('[data-shnew]')&&ui.shAdding){
+    const v=t.value.trim(); ui.shAdding=false;
+    if(v) shAddTask(v); else render();
+    return;
+  }
   if(t.matches&&t.matches('[data-shedit]')&&ui.shEdit){
     const id=ui.shEdit; ui.shEdit=null; shCommitEdit(id,t.value); render(); return;
   }
