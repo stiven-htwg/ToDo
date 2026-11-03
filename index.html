@@ -225,6 +225,32 @@ dialog input:focus,dialog select:focus,dialog textarea:focus{border-color:var(--
 .prio input:focus-visible+span{outline:2px solid var(--soon)}
 .dact{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 
+/* Gemeinsame Kachel (Essensplan) */
+.shsub{font-size:12.5px;color:var(--ink2);padding:0 16px 8px;margin-top:-2px}
+.linkb{color:var(--ink2);text-decoration:underline;text-underline-offset:3px;font-size:12.5px}
+.linkb:hover{color:var(--ink)}
+.meals{padding:2px 10px 8px;display:flex;flex-direction:column;gap:6px}
+.meal{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px 8px 5px 12px;min-height:46px}
+.mlabel{font:400 13px var(--serif);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);width:66px;flex:none}
+.mtext{flex:1;min-width:0;text-align:left;font-weight:500;overflow-wrap:anywhere;padding:6px 0}
+.mtext.empty{color:var(--ink2);font-weight:400;font-size:14px}
+.shedit{flex:1;min-width:0;border:0;border-bottom:1px solid var(--c);background:transparent;outline:none;padding:6px 0;font-weight:500}
+.chip.newc{background:var(--todaybg);color:var(--today);border-color:transparent;font-weight:700;cursor:pointer}
+.stasks{padding:0 10px 6px;display:flex;flex-direction:column;gap:6px}
+.stask{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 6px 9px 12px;box-shadow:var(--shadow)}
+.stask.sdone{box-shadow:none;background:transparent}
+.stask.sdone .check{background:var(--c);border-color:var(--c)}
+.stask.sdone .check svg{opacity:1}
+.stask.sdone .check path{stroke-dashoffset:0}
+.sbody{flex:1;min-width:0}
+.stitle{display:block;text-align:left;font-weight:500;overflow-wrap:anywhere;width:100%;padding:0}
+.stask.sdone .stitle{text-decoration:line-through;color:var(--ink2)}
+.sx{width:28px;height:28px;border-radius:8px;color:var(--ink2);font-size:16px;display:grid;place-items:center;flex:none}
+.sx:hover{background:var(--surface2);color:var(--ink)}
+.shmore{display:block;margin:2px 14px 8px;font-size:12.5px;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+.shadd{display:block;width:calc(100% - 28px);margin:2px 14px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;padding:8px 0;outline:none}
+.shadd:focus{border-color:var(--c)}
+
 /* Toast */
 #toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,30px);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;display:flex;gap:14px;align-items:center;font-size:14px;transition:.25s;z-index:150;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);max-width:92vw}
 #toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
@@ -354,6 +380,9 @@ let dirty=false, pushing=false, again=false, pushT=null, retryT=null;
 let syncState='ok', syncAt=null;
 const ui={tab:DEV.tab||'aktiv',q:'',expanded:new Set(),menu:null,addingSubject:false,renaming:null,focusSub:null,editing:null};
 let undoSnap=null, toastTimer=null, lastDay=todayStr();
+const SHKEY='lernboard_shared_cache', SHPEND='lernboard_shared_pending', SHSEEN='lernboard_shared_seen';
+let SH={}, shPend={}, shLoaded=false, shBusy=false, shAgain=false, shPulling=false, shMissing=false, shSeen=0, shSeenFresh=false, shTimer=null, shRetry=null, shChan=null, shDel=null;
+ui.shEdit=null; ui.shFocusNew=false; ui.shDone=false;
 
 function loadLocal(){
   try{const r=localStorage.getItem(KEY); if(r){const d=JSON.parse(r); return {subjects:d.subjects||[],tasks:d.tasks||[]};}}catch(e){}
@@ -421,9 +450,9 @@ function undo(){
   const d=JSON.parse(undoSnap); S.subjects=d.subjects; S.tasks=d.tasks; undoSnap=null;
   save(); hideToast(); render();
 }
-function toast(msg,withUndo){
+function toast(msg,withUndo,uact){
   const el=$('#toast');
-  el.innerHTML='<span>'+esc(msg)+'</span>'+(withUndo?'<button data-act="undo">Rückgängig</button>':'');
+  el.innerHTML='<span>'+esc(msg)+'</span>'+(withUndo?'<button data-act="'+(uact||'undo')+'">Rückgängig</button>':'');
   el.classList.add('show'); clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>{hideToast(); if(withUndo) undoSnap=null;},withUndo?7000:3000);
 }
@@ -522,14 +551,15 @@ function ghostPill(){
 }
 
 function viewAktiv(){
+  const tile=sharedTile();
   if(!S.subjects.length){
-    return '<div class="empty"><h2>Noch ein leeres Board.</h2><p>Leg dein erstes Fach an, so wie es in deinem Stundenplan steht. Fächer mit offenen Aufgaben bekommen eine eigene Kachel.</p>'+
+    return (tile?'<div class="cols">'+tile+'</div>':'')+'<div class="empty"><h2>Noch ein leeres Board.</h2><p>Leg dein erstes Fach an, so wie es in deinem Stundenplan steht. Fächer mit offenen Aufgaben bekommen eine eigene Kachel.</p>'+
       (ui.addingSubject?ghostPill():'<button class="primary" data-act="add-subject">+ Erstes Fach anlegen</button>')+'</div>';
   }
   const active=[], rest=[];
   S.subjects.forEach(sj=>{ (S.tasks.some(t=>t.subjectId===sj.id&&!t.done)?active:rest).push(sj); });
   let html='';
-  if(active.length) html+='<div class="cols">'+active.map(colHTML).join('')+'</div>';
+  if(active.length||tile) html+='<div class="cols">'+tile+active.map(colHTML).join('')+'</div>';
   else html+='<div class="hint">Gerade ist nichts offen. Plus bei einem Fach, wenn dir was einfällt.</div>';
   html+='<div class="rest">'+(rest.length?'<div class="restlabel">Nichts offen</div>':'')+'<div class="pills">'+rest.map(pillHTML).join('')+ghostPill()+'</div></div>';
   return html;
@@ -597,7 +627,12 @@ function updateHeader(){
 function render(){
   updateHeader();
   const b=$('#board');
+  const ae=document.activeElement; const keep=(ae&&ae.matches&&ae.matches('[data-shnew]'))?{v:ae.value,s:ae.selectionStart}:null;
   b.innerHTML=ui.tab==='aktiv'?viewAktiv():ui.tab==='faellig'?viewFaellig():viewErledigt();
+  if(keep){const i=b.querySelector('[data-shnew]'); if(i){i.value=keep.v; i.focus(); try{i.setSelectionRange(keep.s,keep.s);}catch(e){}}}
+  else if(ui.shFocusNew){const i=b.querySelector('[data-shnew]'); if(i)i.focus();}
+  ui.shFocusNew=false;
+  if(ui.shEdit){const i=b.querySelector('[data-shedit]'); if(i){i.focus(); i.select();}}
   if(ui.focusSub){const i=b.querySelector('.task[data-id="'+ui.focusSub+'"] .subadd'); if(i)i.focus(); ui.focusSub=null;}
   if(ui.addingSubject){const i=b.querySelector('[data-newsubject]'); if(i)i.focus();}
   if(ui.renaming){const i=b.querySelector('#rn'); if(i){i.focus();i.select();}}
@@ -623,6 +658,202 @@ function addSubject(name){
   name=name.trim(); if(!name) return;
   S.subjects.push({id:uidGen(),name:name,color:COLORS[S.subjects.length%COLORS.length]});
   save();
+}
+
+/* ---------- Gemeinsame Kachel (Essensplan) ---------- */
+/* Eigene Tabelle shared_items: eine Zeile pro Eintrag, damit sich Stiven und Marit nicht gegenseitig überschreiben. */
+const CHECKSVG='<svg viewBox="0 0 24 24" width="13" height="13"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function otherName(){const o=PROFILES.find(p=>p.name!==whoName); return o?o.name:'';}
+function shNew(it){return !!(it.data&&it.data.by&&it.data.by!==whoName&&(it.data.at||0)>shSeen);}
+function dayLabel(ds){const n=diffDays(ds); return n===0?'heute':n===1?'morgen':WD[parse(ds).getDay()]+' '+dm(ds);}
+function shDescribe(n){
+  const d=n.data;
+  if(n.kind==='meal') return d.by+': Essen '+dayLabel(n.id.slice(5))+' - '+d.text;
+  return d.done?d.by+' hat erledigt: '+d.title:d.by+': '+d.title;
+}
+function busyTyping(){
+  const a=document.activeElement;
+  return dlg.open||!!(a&&a.matches&&a.matches('[data-shedit],[data-subadd],[data-newsubject],[data-rename],#rn'));
+}
+
+function shLoadCache(){
+  try{SH=JSON.parse(localStorage.getItem(SHKEY+'_'+uid)||'{}')||{};}catch(e){SH={};}
+  try{shPend=JSON.parse(localStorage.getItem(SHPEND+'_'+uid)||'{}')||{};}catch(e){shPend={};}
+  let s=null; try{s=localStorage.getItem(SHSEEN+'_'+uid);}catch(e){}
+  shSeen=s?(Number(s)||0):0; shSeenFresh=!s;
+}
+function shSave(){
+  if(!uid) return;
+  try{localStorage.setItem(SHKEY+'_'+uid,JSON.stringify(SH)); localStorage.setItem(SHPEND+'_'+uid,JSON.stringify(shPend));}catch(e){}
+}
+function shStart(){
+  shLoaded=false; shMissing=false; shLoadCache();
+  if(!shChan&&sb&&sb.channel){
+    try{ shChan=sb.channel('shared-items').on('postgres_changes',{event:'*',schema:'public',table:'shared_items'},function(){ if(!document.hidden) shPull(); }).subscribe(); }
+    catch(e){ shChan=null; }
+  }
+  shPull();
+}
+function shStop(){
+  if(shChan){ try{sb.removeChannel(shChan);}catch(e){} shChan=null; }
+  clearTimeout(shTimer); clearTimeout(shRetry);
+  SH={}; shPend={}; shLoaded=false;
+}
+function shMarkSeen(rerender){
+  if(!uid) return;
+  const had=Object.values(SH).some(shNew);
+  shSeen=Date.now(); try{localStorage.setItem(SHSEEN+'_'+uid,String(shSeen));}catch(e){}
+  if(rerender&&had) render();
+}
+
+function shSchedule(){ clearTimeout(shTimer); shTimer=setTimeout(shFlush,400); }
+function shPut(it){ SH[it.id]=it; shPend[it.id]={op:'up'}; shSave(); setSync('pending'); shSchedule(); }
+function shRemove(id){ delete SH[id]; shPend[id]={op:'del'}; shSave(); shSchedule(); }
+
+async function shFlush(){
+  if(!sb||!session) return;
+  if(shBusy){shAgain=true;return;}
+  const ids=Object.keys(shPend); if(!ids.length) return;
+  shBusy=true;
+  try{
+    for(const id of ids){
+      const p=shPend[id]; if(!p) continue;
+      let r;
+      if(p.op==='del'){ r=await sb.from('shared_items').delete().eq('id',id); }
+      else{
+        const it=SH[id]; if(!it){ delete shPend[id]; continue; }
+        r=await sb.from('shared_items').upsert({id:id,kind:it.kind,data:it.data,updated_by:whoName,updated_at:new Date().toISOString()},{onConflict:'id'});
+      }
+      if(r&&r.error) throw r.error;
+      if(shPend[id]===p) delete shPend[id];
+      shSave();
+    }
+    if(!dirty&&!Object.keys(shPend).length) setSync('ok');
+  }catch(e){
+    setSync('offline'); clearTimeout(shRetry); shRetry=setTimeout(shFlush,20000);
+  }
+  shBusy=false;
+  if(shAgain){shAgain=false; shFlush();}
+}
+
+async function shPull(){
+  if(!sb||!session||shPulling) return;
+  shPulling=true;
+  try{
+    if(Object.keys(shPend).length) await shFlush();
+    let r;
+    try{ r=await sb.from('shared_items').select('id,kind,data,updated_by,updated_at'); }
+    catch(e){ setSync('offline'); return; }
+    if(r.error){
+      if(/does not exist|schema cache|could not find|relation/i.test(r.error.message||'')){ if(!shMissing){shMissing=true; render();} }
+      else setSync('offline');
+      return;
+    }
+    if(shMissing){shMissing=false; render();}
+    if(shSeenFresh){ shSeen=Date.now(); try{localStorage.setItem(SHSEEN+'_'+uid,String(shSeen));}catch(e){} shSeenFresh=false; }
+    const fresh={};
+    (r.data||[]).forEach(x=>{ fresh[x.id]={id:x.id,kind:x.kind,data:x.data||{}}; });
+    Object.keys(shPend).forEach(id=>{ if(shPend[id].op==='del') delete fresh[id]; else if(SH[id]) fresh[id]=SH[id]; });
+    const sig=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k].data]));
+    if(sig(fresh)!==sig(SH)){
+      if(busyTyping()) return;               // nicht mitten im Tippen umschalten, der nächste Abgleich holt es nach
+      if(shLoaded){
+        const ch=[];
+        Object.keys(fresh).forEach(id=>{ const n=fresh[id], o=SH[id]; if(n.data.by&&n.data.by!==whoName&&(!o||o.data.at!==n.data.at)) ch.push(n); });
+        if(ch.length) toast(ch.length===1?shDescribe(ch[0]):ch.length+' Änderungen von '+ch[0].data.by,false);
+      }
+      SH=fresh; shSave(); render();
+    }
+    shLoaded=true;
+    if(syncState==='offline'&&!dirty&&!Object.keys(shPend).length) setSync('ok');
+    shPrune();
+  } finally { shPulling=false; }
+}
+function shPrune(){
+  const cut=addDays(-14), old=Date.now()-30*86400000;
+  Object.keys(SH).forEach(id=>{
+    const it=SH[id];
+    if(id.indexOf('meal-')===0&&id.slice(5)<cut) shRemove(id);
+    else if(it.kind==='task'&&it.data.done&&(it.data.doneAt||0)<old) shRemove(id);
+  });
+}
+
+function shCommitEdit(id,val){
+  val=(val||'').trim();
+  if(id.indexOf('meal-')===0){
+    const old=SH[id];
+    if(!val){ if(old) shRemove(id); return; }
+    if(old&&old.data.text===val) return;
+    shPut({id:id,kind:'meal',data:{text:val,by:whoName,at:Date.now()}});
+  }else{
+    const it=SH[id]; if(!it||!val||it.data.title===val) return;
+    shPut({id:id,kind:'task',data:Object.assign({},it.data,{title:val,by:whoName,at:Date.now()})});
+  }
+}
+function shAddTask(v){
+  const now=Date.now();
+  shPut({id:'t'+uidGen(),kind:'task',data:{title:v,done:false,by:whoName,at:now,created:now}});
+  ui.shFocusNew=true; render();
+}
+function shToggle(id){
+  const it=SH[id]; if(!it) return;
+  const done=!it.data.done, now=Date.now();
+  const d=Object.assign({},it.data,{done:done,by:whoName,at:now});
+  if(done) d.doneAt=now; else delete d.doneAt;
+  shPut({id:id,kind:it.kind,data:d}); render();
+}
+function shDelete(id){
+  const it=SH[id]; if(!it) return;
+  shDel=it; shRemove(id); render(); toast('Gelöscht.',true,'sh-undo');
+}
+function shUndo(){
+  if(!shDel) return;
+  shPut(shDel); shDel=null; hideToast(); render();
+}
+
+function mealRow(offset){
+  const ds=addDays(offset), id='meal-'+ds, it=SH[id], txt=it?(it.data.text||''):'';
+  const editing=ui.shEdit===id;
+  return '<div class="meal" data-shid="'+id+'"><span class="mlabel">'+(offset===0?'Heute':'Morgen')+'</span>'+
+    (editing
+      ? '<input class="shedit" data-shedit="meal" value="'+esc(txt)+'" maxlength="120" placeholder="Was gibt es?">'
+      : '<button class="mtext'+(txt?'':' empty')+'" data-act="sh-edit">'+(txt?esc(txt):'Noch nichts - tippen zum Eintragen')+'</button>')+
+    (it&&shNew(it)&&!editing?'<button class="chip newc" data-act="sh-seen" title="Als gesehen markieren">neu · '+esc(it.data.by)+'</button>':'')+
+  '</div>';
+}
+function shTaskHTML(it){
+  const d=it.data, editing=ui.shEdit===it.id;
+  return '<div class="stask'+(d.done?' sdone':'')+'" data-shid="'+it.id+'">'+
+    '<button class="check" data-act="sh-toggle" aria-label="'+(d.done?'Wieder öffnen':'Erledigt')+'">'+CHECKSVG+'</button>'+
+    '<div class="sbody">'+
+      (editing
+        ? '<input class="shedit" data-shedit="task" value="'+esc(d.title||'')+'" maxlength="150">'
+        : '<button class="stitle" data-act="sh-edit">'+esc(d.title||'')+'</button>')+
+      '<div class="meta"><span class="chip">'+esc(d.by||'?')+'</span>'+(shNew(it)?'<button class="chip newc" data-act="sh-seen">neu</button>':'')+'</div>'+
+    '</div>'+
+    '<button class="sx" data-act="sh-del" aria-label="Löschen">×</button>'+
+  '</div>';
+}
+function sharedTile(){
+  if(MODE!=='remote') return '';
+  const q=ui.q.trim().toLowerCase();
+  const tasks=Object.values(SH).filter(x=>x.kind==='task');
+  const open=tasks.filter(x=>!x.data.done&&(!q||(x.data.title||'').toLowerCase().includes(q)))
+    .sort((a,b)=>(a.data.created||a.data.at||0)-(b.data.created||b.data.at||0));
+  const done=tasks.filter(x=>x.data.done).sort((a,b)=>(b.data.doneAt||0)-(a.data.doneAt||0));
+  const o=otherName(), anyNew=Object.values(SH).some(shNew);
+  let h='<section class="col shared" style="--c:#d1a24a">'+
+    '<header class="colhead"><div class="ctitle">Essensplan</div><span class="count">'+(open.length?open.length+' offen':'')+'</span></header>'+
+    '<div class="shsub">Gemeinsam'+(o?' mit '+esc(o):'')+(anyNew?' · <button class="linkb" data-act="sh-seen">alles gesehen</button>':'')+'</div>'+
+    '<div class="meals">'+mealRow(0)+mealRow(1)+'</div>';
+  if(shMissing) h+='<div class="hint">Die gemeinsame Tabelle fehlt noch in Supabase. Bitte das SQL dafür ausführen.</div>';
+  h+='<div class="stasks">'+open.map(shTaskHTML).join('')+'</div>';
+  if(done.length){
+    h+='<button class="shmore" data-act="sh-more">'+(ui.shDone?'Erledigte ausblenden':done.length+' erledigt anzeigen')+'</button>';
+    if(ui.shDone) h+='<div class="stasks">'+done.slice(0,15).map(shTaskHTML).join('')+'</div>';
+  }
+  h+='<input class="shadd" data-shnew placeholder="Gemeinsame Aufgabe hinzufügen …" maxlength="150">';
+  return h+'</section>';
 }
 
 /* ---------- Dialog ---------- */
@@ -716,16 +947,23 @@ async function enter(sess){
   $('#login').hidden=true; document.body.classList.remove('locked');
   ui.expanded.clear(); ui.menu=null; ui.addingSubject=false; ui.renaming=null; undoSnap=null;
   setSync(dirty?'pending':'ok');
+  shStart();
   render();
   await pull();
 }
 async function logout(){
   $('#whomenu').hidden=true;
+  if(Object.keys(shPend).length){
+    await shFlush();
+    if(Object.keys(shPend).length&&!confirm('Es gibt noch gemeinsame Änderungen, die nicht gespeichert werden konnten (offline?). Trotzdem abmelden?')) return;
+  }
   if(dirty){
     await push();
     if(dirty&&!confirm('Es gibt noch Änderungen, die nicht gespeichert werden konnten (offline?). Trotzdem abmelden?')) return;
   }
   try{localStorage.removeItem(cacheKey);localStorage.removeItem(cacheKey+'_dirty');}catch(e){}
+  try{localStorage.removeItem(SHKEY+'_'+uid);localStorage.removeItem(SHPEND+'_'+uid);localStorage.removeItem(SHSEEN+'_'+uid);}catch(e){}
+  shStop();
   const s=sb; session=null; uid=null; S=blank(); whoName='Lokal';
   try{await s.auth.signOut();}catch(e){}
   showLogin();
@@ -786,6 +1024,7 @@ document.addEventListener('click',e=>{
   const art=el?el.closest('.task'):null, tid=art?art.dataset.id:null;
   const colEl=el?el.closest('[data-sid]'):null, sid=colEl?colEl.dataset.sid:null;
   const subId=el?el.dataset.sub:null, color=el?el.dataset.color:null;
+  const shEl=el?el.closest('[data-shid]'):null, shid=shEl?shEl.dataset.shid:null;
 
   if(!e.target.closest('#bkmenu')&&act!=='bkmenu') $('#bkmenu').hidden=true;
   if(!e.target.closest('#whomenu')&&act!=='whomenu') $('#whomenu').hidden=true;
@@ -813,6 +1052,12 @@ document.addEventListener('click',e=>{
     }
     case 'add-subject': ui.addingSubject=true; render(); break;
     case 'undo': undo(); break;
+    case 'sh-edit': ui.shEdit=shid; render(); break;
+    case 'sh-toggle': shToggle(shid); break;
+    case 'sh-del': shDelete(shid); break;
+    case 'sh-undo': shUndo(); break;
+    case 'sh-more': ui.shDone=!ui.shDone; render(); break;
+    case 'sh-seen': shMarkSeen(true); break;
     case 'whomenu': updateSync(); $('#whomenu').hidden=!$('#whomenu').hidden; break;
     case 'logout': logout(); break;
     case 'bkmenu': $('#bkmenu').hidden=!$('#bkmenu').hidden; break;
@@ -827,6 +1072,15 @@ document.addEventListener('keydown',e=>{
     const v=t.value.trim(); if(!v) return;
     const id=t.closest('.task').dataset.id, task=taskById(id);
     if(task){(task.subs=task.subs||[]).push({id:uidGen(),t:v,done:false}); save(); ui.focusSub=id; render();}
+    return;
+  }
+  if(t.matches&&t.matches('[data-shnew]')){
+    if(e.key==='Enter'){const v=t.value.trim(); if(v){t.value=''; shAddTask(v);}}
+    return;
+  }
+  if(t.matches&&t.matches('[data-shedit]')){
+    if(e.key==='Enter'){const id=ui.shEdit; ui.shEdit=null; if(id)shCommitEdit(id,t.value); render();}
+    else if(e.key==='Escape'){ui.shEdit=null; render();}
     return;
   }
   if(t.matches&&t.matches('[data-newsubject]')){
@@ -852,6 +1106,9 @@ document.addEventListener('keydown',e=>{
 
 document.addEventListener('focusout',e=>{
   const t=e.target;
+  if(t.matches&&t.matches('[data-shedit]')&&ui.shEdit){
+    const id=ui.shEdit; ui.shEdit=null; shCommitEdit(id,t.value); render(); return;
+  }
   if(t.matches&&t.matches('[data-rename]')&&ui.renaming){
     const s=subj(ui.renaming), v=t.value.trim();
     if(s&&v&&v!==s.name){s.name=v; save();}
@@ -904,11 +1161,14 @@ document.addEventListener('dragend',cleanup);
 
 /* ---------- Sync & Zeit ---------- */
 window.addEventListener('storage',e=>{if(MODE==='local'&&e.key===KEY){S=loadLocal(); render();}});
-function refresh(){ if(MODE==='remote'&&session&&!document.hidden){pull();} if(todayStr()!==lastDay){lastDay=todayStr();render();} }
+function refresh(){ if(MODE==='remote'&&session&&!document.hidden){pull(); shPull();} if(todayStr()!==lastDay){lastDay=todayStr();render();} }
 document.addEventListener('visibilitychange',refresh);
 window.addEventListener('focus',refresh);
-window.addEventListener('online',()=>{if(MODE==='remote'&&session){if(dirty)push(); else pull();}});
+window.addEventListener('online',()=>{if(MODE==='remote'&&session){if(dirty)push(); else pull(); shFlush(); shPull();}});
 setInterval(refresh,120000);
+setInterval(function(){ if(MODE==='remote'&&session&&!document.hidden) shPull(); },15000);
+document.addEventListener('visibilitychange',function(){ if(document.hidden) shMarkSeen(false); });
+window.addEventListener('pagehide',function(){ shMarkSeen(false); });
 
 /* ---------- Start ---------- */
 (async function boot(){
@@ -920,7 +1180,7 @@ setInterval(refresh,120000);
   document.body.classList.add('locked');
   if(!window.supabase){ showLogin('Supabase konnte nicht geladen werden. Internetverbindung prüfen und Seite neu laden.'); return; }
   sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
-  sb.auth.onAuthStateChange(ev=>{ if(ev==='SIGNED_OUT'&&session){ session=null; showLogin('Du wurdest abgemeldet.'); } });
+  sb.auth.onAuthStateChange(ev=>{ if(ev==='SIGNED_OUT'&&session){ shStop(); session=null; showLogin('Du wurdest abgemeldet.'); } });
   let s=null;
   try{ const r=await sb.auth.getSession(); s=r.data&&r.data.session; }catch(e){}
   if(s) await enter(s); else showLogin();
